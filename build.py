@@ -8,9 +8,12 @@ import json, html, os
 
 BASE = "https://natal.ofertadorafa.com.br"
 PIXEL = "4651558238447028"
-V = "1"  # suba quando mudar CSS/JS (cache de 7 dias)
+V = "2"  # suba quando mudar CSS/JS (cache de 7 dias)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(ROOT, "produtos.json"), encoding="utf-8"))
+for _p in P:
+    if os.path.exists(os.path.join(ROOT, "img", _p["id"] + ".webp")): _p["imagem"] = "/img/" + _p["id"] + ".webp"
+
 CFG = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8")) if os.path.exists(os.path.join(ROOT, "config.json")) else {}
 GRUPO = CFG.get("grupo_whatsapp", "").strip()
 
@@ -51,6 +54,9 @@ def head(title, desc, path, og_img):
 <meta property="og:url" content="{BASE}{path}">
 <meta property="og:site_name" content="Natal do Rafa">
 <meta property="og:image" content="{e(og_img)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#10291F">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -102,13 +108,13 @@ def grupo_bloco():
 def fio():
     pts, bulbs = [], []
     cores = ["#E9B949", "#F2D58A", "#C94F3D", "#E9B949", "#9CC9A8"]
-    for i in range(23):
+    for i in range(61):
         x = 20 + i * 50
-        y = 20 + (14 if i % 2 else 0)
+        y = 12 + (14 if i % 2 else 0)
         pts.append(f"{x},{y}")
         c = cores[i % len(cores)]
         bulbs.append(f'<g class="lamp" style="--d:{(i * 0.37) % 3:.2f}s"><rect x="{x-3}" y="{y}" width="6" height="5" rx="1" fill="#2A3B31"/><ellipse cx="{x}" cy="{y+12}" rx="5.5" ry="8" fill="{c}"/></g>')
-    return (f'<svg class="fio" viewBox="0 0 1160 60" preserveAspectRatio="xMidYMin slice" aria-hidden="true">'
+    return (f'<svg class="fio" viewBox="0 0 3040 58" preserveAspectRatio="xMidYMin slice" aria-hidden="true">'
             f'<polyline points="{" ".join(pts)}" fill="none" stroke="#2A3B31" stroke-width="2"/>{"".join(bulbs)}</svg>')
 
 
@@ -133,7 +139,7 @@ FAQ = [("Por que cada item tem seu próprio botão?", "Porque cada produto é ve
        ("É seguro comprar pelo link?", "Sim. A compra é feita no próprio Mercado Livre, com Compra Garantida. A gente só indica e monta a combinação.")]
 faq = "".join(f"<details><summary>{q}</summary><p>{a}</p></details>" for q, a in FAQ)
 
-og = next(p for p in P if p["id"] == "arvore-180-800-galhos")["imagem"]
+og = BASE + "/og.jpg"
 index = head("Natal do Rafa — sua decoração de Natal completa, dentro do seu orçamento",
              "Diga quanto quer gastar e o tamanho da sala: montamos a árvore, as luzes, as bolas e o resto com produtos bem avaliados do Mercado Livre.",
              "/", og) + f"""

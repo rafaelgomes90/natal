@@ -155,16 +155,13 @@
       '<ol class="itens">'+KIT.itens.map(itemHTML).join('')+'</ol>'+
       '<p class="como">Cada item abre no Mercado Livre: confira o preço do dia, coloque no carrinho e pague tudo junto lá. Preços mudam todo dia (às vezes caem com cupom).</p>'+
       '<div class="kit-acoes"><button type="button" class="refaz">Refazer com outro orçamento</button><button type="button" class="compartilha">Mandar o kit no WhatsApp</button></div>';
+    prepararImagem();
   }
 
   kitEl.addEventListener('click', function(ev){
     var b = ev.target.closest('button'); if(!b) return;
     if(b.classList.contains('refaz')){ kitEl.hidden = true; quiz.hidden = false; passo = 0; render(); quiz.scrollIntoView({behavior:'smooth', block:'start'}); return; }
-    if(b.classList.contains('compartilha')){
-      var txt = '🎄 Meu kit de Natal (R$ '+brl(total())+'):\n' + KIT.itens.map(function(it){ return '• '+it.p.nome+(it.q>1?' ('+it.q+'x)':'')+': '+it.p.link; }).join('\n') + '\n\nMonte o seu: '+location.origin+'/';
-      CSA.trackC('CompartilhouKit', {total:Math.round(total())});
-      window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank', 'noopener'); return;
-    }
+    if(b.classList.contains('compartilha')){ compartilhar(); return; }
     var i = +b.getAttribute('data-i'), it = KIT.itens[i]; if(!it) return;
     if(b.classList.contains('tira')){ KIT.itens.splice(i,1); desenhar(); return; }
     if(b.classList.contains('troca')){
@@ -178,6 +175,76 @@
       var li = kitEl.querySelector('.it[data-i="'+i+'"]'); if(li){ li.classList.add('novo'); }
     }
   });
+
+  // ------------------------------------------------------------ WhatsApp: imagem do kit + texto formatado
+  var EMOJI = {arvore:'🌲', luzes:'✨', bolas:'🔴', ponteira:'⭐', saia:'🎁', festao:'🌿', lacos:'🎀', destaque:'💎', guirlanda:'🚪', janela:'🪟', mesa:'🍽️', almofadas:'🛋️', papai:'🎅'};
+  var SITE = location.origin + '/';
+  function textoKit(comSiteNoTopo){
+    var t = Math.round(total()), l = [];
+    if(comSiteNoTopo) l.push('Monte o seu: '+SITE, '');
+    l.push('🎄 *Meu kit de Natal*', 'Árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m · estilo '+ESTILO_TXT[R.est].split(',')[0], '💰 *Total: ~R$ '+brl(t)+'*', '');
+    KIT.itens.forEach(function(it){
+      var p = it.p;
+      l.push(EMOJI[p.papel]+' *'+NOME_PAPEL[p.papel]+'* · R$ '+brl(p.precoAprox*it.q)+(it.q>1?' ('+it.q+'x)':''));
+      l.push(p.nome);
+      l.push('👉 '+p.link, '');
+    });
+    l.push('_Preços aproximados do Mercado Livre; o valor do dia aparece no anúncio._');
+    if(!comSiteNoTopo) l.push('', 'Monte o seu em 30 segundos:', SITE);
+    return l.join('\n');
+  }
+  var IMG_KIT = null, IMG_SEQ = 0;
+  function carregar(src){ return new Promise(function(ok){ var im = new Image(); im.onload = function(){ ok(im); }; im.onerror = function(){ ok(null); }; im.src = src; }); }
+  function rr(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  function prepararImagem(){
+    var seq = ++IMG_SEQ; IMG_KIT = null;
+    if(!window.HTMLCanvasElement || !window.Promise) return;
+    var itens = KIT.itens.slice(0, 6), resto = KIT.itens.length - itens.length;
+    var fontes = document.fonts ? Promise.all(['600 60px Fraunces','italic 500 60px Fraunces','700 40px Inter','600 30px Inter'].map(function(f){ return document.fonts.load(f).catch(function(){}); })) : Promise.resolve();
+    Promise.all([fontes].concat(itens.map(function(it){ return carregar(it.p.imagem); }))).then(function(r){
+      if(seq !== IMG_SEQ) return;
+      var fotos = r.slice(1), W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var c = cv.getContext('2d');
+      var g = c.createRadialGradient(W*.85, 0, 50, W*.85, 0, W*1.1); g.addColorStop(0,'#24503D'); g.addColorStop(.6,'#10291F'); c.fillStyle = g; c.fillRect(0,0,W,H);
+      // fio de luz
+      c.strokeStyle = '#2A3B31'; c.lineWidth = 4; c.beginPath();
+      var cores = ['#E9B949','#F6DE9A','#C94F3D','#E9B949','#9CC9A8'];
+      for(var i=0;i<13;i++){ var x = i*90, y = 24 + (i%2?22:0); i ? c.lineTo(x,y) : c.moveTo(x,y); } c.stroke();
+      for(i=0;i<13;i++){ x = i*90; y = 24 + (i%2?22:0); c.save(); c.shadowColor = cores[i%5]; c.shadowBlur = 30; c.fillStyle = cores[i%5]; c.beginPath(); c.ellipse(x, y+28, 12, 19, 0, 0, 7); c.fill(); c.restore(); c.fillStyle = '#2A3B31'; c.fillRect(x-7, y, 14, 11); }
+      c.textBaseline = 'alphabetic';
+      c.fillStyle = '#E9B949'; c.font = '700 26px Inter, sans-serif'; c.fillText('MEU KIT DE NATAL', 60, 150);
+      c.fillStyle = '#FBF7EF'; c.font = '600 60px Fraunces, Georgia, serif'; c.fillText('Árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m', 60, 222);
+      c.fillStyle = '#F6DE9A'; c.font = 'italic 500 50px Fraunces, Georgia, serif'; c.fillText('estilo '+ESTILO_TXT[R.est].split(',')[0], 60, 284);
+      // cartão
+      var cx = 60, cy = 320, cw = W-120, ch = 870; c.fillStyle = '#FBF7EF'; rr(c, cx, cy, cw, ch, 34); c.fill();
+      var cols = itens.length > 4 ? 3 : 2, rows = Math.ceil(itens.length/cols), gap = 18, pad = 28;
+      var tw = Math.min((cw - 2*pad - gap*(cols-1))/cols, (ch - 2*pad - 110 - rows*78 - (rows-1)*gap)/rows);
+      var gx = cx + (cw - (cols*tw + (cols-1)*gap))/2;
+      itens.forEach(function(it, k){
+        var linha = Math.floor(k/cols), nrow = Math.min(cols, itens.length - linha*cols), off = (cols - nrow)*(tw+gap)/2;
+        var x = gx + off + (k%cols)*(tw+gap), y = cy + pad + linha*(tw+78+gap), f = fotos[k];
+        c.save(); rr(c, x, y, tw, tw, 18); c.clip(); c.fillStyle = '#fff'; c.fillRect(x, y, tw, tw);
+        if(f){ var esc = Math.max(tw/f.width, tw/f.height); c.drawImage(f, x + (tw - f.width*esc)/2, y + (tw - f.height*esc)/2, f.width*esc, f.height*esc); }
+        c.restore();
+        c.fillStyle = '#2F7D4F'; c.font = '700 22px Inter, sans-serif'; c.fillText(NOME_PAPEL[it.p.papel].toUpperCase()+(it.q>1?' · '+it.q+'x':''), x+2, y+tw+32);
+        c.fillStyle = '#1B2A22'; c.font = '700 32px Inter, sans-serif'; c.fillText('R$ '+brl(it.p.precoAprox*it.q), x+2, y+tw+68);
+      });
+      var ly = cy + ch - 100; c.fillStyle = '#E4DCCB'; c.fillRect(cx+pad, ly, cw-2*pad, 2);
+      c.fillStyle = '#5E6B62'; c.font = '600 28px Inter, sans-serif'; c.fillText('Total aproximado'+(resto>0?' (+'+resto+' itens)':''), cx+pad, ly+62);
+      c.fillStyle = '#B3261E'; c.font = '700 50px Inter, sans-serif'; c.textAlign = 'right'; c.fillText('R$ '+brl(total()), cx+cw-pad, ly+66); c.textAlign = 'left';
+      c.fillStyle = '#E9B949'; rr(c, 60, 1218, W-120, 84, 24); c.fill();
+      c.fillStyle = '#1B2A22'; c.font = '700 32px Inter, sans-serif'; c.textAlign = 'center'; c.fillText('Monte o seu: natal.ofertadorafa.com.br', W/2, 1271); c.textAlign = 'left';
+      cv.toBlob(function(bl){ if(seq === IMG_SEQ && bl) IMG_KIT = new File([bl], 'meu-kit-de-natal.jpg', {type:'image/jpeg'}); }, 'image/jpeg', .9);
+    });
+  }
+  function compartilhar(){
+    CSA.trackC('CompartilhouKit', {total:Math.round(total())});
+    var dados = IMG_KIT ? {files:[IMG_KIT], text:textoKit(false)} : null;
+    if(dados && navigator.canShare && navigator.canShare(dados)){
+      navigator.share(dados).catch(function(e){ if(e && e.name !== 'AbortError') abrirWa(); });
+    } else abrirWa();
+  }
+  function abrirWa(){ window.open('https://wa.me/?text='+encodeURIComponent(textoKit(true)), '_blank', 'noopener'); }
 
   function concluir(){
     bar.style.width = '100%';
