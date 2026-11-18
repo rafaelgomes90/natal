@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Painel · Natal do Rafa</title>
+<style>
+:root{--bg:#0b0d10;--card:#14181d;--line:#232a31;--tx:#e8e6e1;--dim:#8b9097;--amb:#ffb547;--ok:#4ade80}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:980px;margin:auto}
+h1{font-size:18px;margin:0 0 14px;display:flex;align-items:center;gap:10px}h1 small{color:var(--dim);font-weight:400;font-size:13px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(74,222,128,.6);animation:p 2s infinite}@keyframes p{70%{box-shadow:0 0 0 8px rgba(74,222,128,0)}}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}@media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.k{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}.k b{display:block;font-size:30px;font-variant-numeric:tabular-nums}.k span{color:var(--dim);font-size:13px}
+.k.on b{color:var(--ok)}.k.cl b{color:var(--amb)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}.box h2{font-size:14px;margin:0 0 8px;color:var(--dim);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:6px 4px;border-top:1px solid var(--line);vertical-align:top}tr:first-child td{border-top:0}
+.t{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}.tag{font-size:12px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.tag.click{border-color:var(--amb);color:var(--amb)}.tag.quiz{border-color:var(--ok);color:var(--ok)}.ad{color:var(--dim);font-size:12px}.vazio{color:var(--dim)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:640px){.cols{grid-template-columns:1fr}}
+.erro{background:#3a1515;border:1px solid #6b2424;padding:12px;border-radius:10px}
+</style></head><body>
+<h1><span class="dot"></span>Natal do Rafa <small id="upd">carregando…</small></h1>
+<div id="err"></div>
+<div class="kpis">
+ <div class="k on"><b id="k-on">–</b><span>online agora</span></div>
+ <div class="k"><b id="k-vis">–</b><span>visitantes hoje</span></div>
+ <div class="k cl"><b id="k-cli">–</b><span>cliques pro ML hoje</span></div>
+ <div class="k"><b id="k-tx">–</b><span>visitantes que clicaram</span></div>
+ <div class="k"><b id="k-kit">–</b><span>kits montados hoje</span></div>
+</div>
+<div class="box"><h2>Online agora</h2><table id="online"></table></div>
+<div class="box"><h2>Últimos acessos e cliques</h2><table id="ultimos"></table></div>
+<div class="cols">
+ <div class="box"><h2>Cidades hoje</h2><table id="cidades"></table></div>
+ <div class="box"><h2>Cliques por produto hoje</h2><table id="produtos"></table></div>
+ <div class="box"><h2>Orçamento escolhido no quiz hoje</h2><table id="faixas"></table></div>
+</div>
+<div class="box"><h2>Anúncios hoje (visitantes · cliques)</h2><table id="anuncios"></table></div>
+<script>
+var K=new URLSearchParams(location.hash.slice(1)).get('k')||'';
+function e(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function hora(ts){return new Date(ts*1000).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function lugar(r){return r.cidade?e(r.cidade)+(r.uf?' – '+e(r.uf):''):'<span class="vazio">local desconhecido</span>'}
+function pag(p){return p==='/'||!p?'início':e(p.replace(/\//g,' ').trim())}
+function rows(id,list,fn,vazio){document.getElementById(id).innerHTML=list.length?list.map(fn).join(''):'<tr><td class="vazio">'+vazio+'</td></tr>'}
+function load(){
+ fetch('/api/painel?k='+encodeURIComponent(K),{cache:'no-store'}).then(function(r){if(r.status==403)throw 'Chave inválida: abra o link completo que te passei.';return r.json()}).then(function(d){
+  document.getElementById('err').innerHTML='';
+  document.getElementById('upd').textContent='atualizado '+hora(d.agora)+' · atualiza a cada 5s';
+  var h=d.hoje;
+  document.getElementById('k-on').textContent=d.online.length;
+  document.getElementById('k-vis').textContent=h.visitantes;
+  document.getElementById('k-cli').textContent=h.cliques;
+  document.getElementById('k-kit').textContent=h.kits||0;
+  document.getElementById('k-tx').textContent=h.visitantes?h.quem_clicou+' ('+Math.round(100*h.quem_clicou/h.visitantes)+'%)':'0';
+  rows('online',d.online,function(r){return '<tr><td>'+lugar(r)+'</td><td>'+e(r.aparelho)+'</td><td>'+pag(r.pagina)+(r.anuncio?'<div class="ad">via '+e(r.anuncio)+'</div>':'')+'</td></tr>'},'ninguém no site agora');
+  rows('ultimos',d.ultimos,function(r){return '<tr><td class="t">'+hora(r.ts)+'</td><td><span class="tag '+r.tipo+'">'+(r.tipo=='click'?'clicou no ML':r.tipo=='quiz'?'montou kit':'visitou')+'</span></td><td>'+lugar(r)+' · '+e(r.aparelho)+'<div class="ad">'+(r.tipo!='view'?e(r.produto):pag(r.pagina))+(r.anuncio?' · via '+e(r.anuncio):'')+'</div></td></tr>'},'ainda sem acessos');
+  rows('cidades',d.cidades,function(r){return '<tr><td>'+lugar(r)+'</td><td class="t">'+r.n+'</td></tr>'},'—');
+  rows('produtos',d.produtos,function(r){return '<tr><td>'+e(r.produto)+'</td><td class="t">'+r.n+'</td></tr>'},'nenhum clique ainda');
+  rows('faixas',d.faixas||[],function(r){return '<tr><td>'+e(r.faixa)+'</td><td class="t">'+r.n+'</td></tr>'},'ninguém montou kit ainda');
+  rows('anuncios',d.anuncios,function(r){return '<tr><td>'+e(r.anuncio)+'</td><td class="t">'+r.visitantes+' · '+(r.cliques||0)+'</td></tr>'},'nenhum visitante vindo de anúncio ainda');
+ }).catch(function(x){document.getElementById('err').innerHTML='<div class="erro">'+e(typeof x=='string'?x:'Sem conexão com o servidor do painel. Tentando de novo…')+'</div>'})
+}
+load();setInterval(load,5000);
+</script></body></html>
