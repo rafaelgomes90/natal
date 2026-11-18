@@ -11,6 +11,33 @@ TZ_OFFSET = -3 * 3600  # Fortaleza
 ONLINE_S = 60
 
 lock = threading.Lock()
+KITS = os.path.join(os.path.dirname(DB) or '.', 'kits')
+os.makedirs(KITS, exist_ok=True)
+_rate = {}  # hash do IP -> [timestamps] (limite de kits salvos por hora)
+
+
+def limpar_kits():
+    lim = time.time() - 86400 * 60
+    for f in os.listdir(KITS):
+        p = os.path.join(KITS, f)
+        try:
+            if os.path.getmtime(p) < lim: os.remove(p)
+        except OSError:
+            pass
+
+
+def vigia_codigo():
+    """Se o server.py mudar (git pull), sai: o Docker (restart: unless-stopped) sobe a versão nova."""
+    me = os.path.abspath(__file__)
+    t0 = os.path.getmtime(me)
+    while True:
+        time.sleep(30)
+        try:
+            if os.path.getmtime(me) != t0:
+                print('server.py mudou, reiniciando', flush=True); os._exit(0)
+        except OSError:
+            pass
+
 con = sqlite3.connect(DB, check_same_thread=False)
 con.execute('''CREATE TABLE IF NOT EXISTS ev(
   ts REAL, sid TEXT, tipo TEXT, pagina TEXT, produto TEXT, cidade TEXT, uf TEXT,
@@ -73,7 +100,86 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def _send(self, code, body, ctype, cache='no-store'):
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Cache-Control', cache)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def salvar_kit(self):
+        import base64, secrets
+        n = int(self.headers.get('Content-Length', 0))
+        if n <= 0 or n > 1_200_000:
+            return self._json(413, {})
+        ip = (self.headers.get('X-Forwarded-For') or self.client_address[0]).split(',')[0].strip()
+        h = hashlib.sha256(ip.encode()).hexdigest()[:16]; agora = time.time()
+        with lock:
+            lst = [t for t in _rate.get(h, []) if t > agora - 3600]
+            if len(lst) >= 40:
+                return self._json(429, {})
+            lst.append(agora); _rate[h] = lst
+            if len(_rate) > 50000: _rate.clear()
+        try:
+            d = json.loads(self.rfile.read(n))
+            img = d.get('img', '')
+            img = base64.b64decode(img.split(',', 1)[-1])
+            kit = d.get('kit') or {}
+            assert img[:3] == b'\xff\xd8\xff' and len(img) < 900_000
+            itens = [{'id': clip(i.get('id'), 60), 'q': max(1, min(9, int(i.get('q', 1))))} for i in kit.get('itens', [])][:20]
+            meta = {'orc': int(kit.get('orc', 0)), 'tam': clip(kit.get('tam'), 2), 'est': clip(kit.get('est'), 12),
+                    'tem': [clip(x, 12) for x in (kit.get('tem') or [])][:3], 'alt': float(kit.get('alt', 1.8)),
+                    'itens': itens, 'total': int(kit.get('total', 0)), 'titulo': clip(kit.get('titulo'), 120),
+                    'resumo': clip(kit.get('resumo'), 300)}
+        except Exception:
+            return self._json(400, {})
+        kid = secrets.token_hex(4)
+        open(os.path.join(KITS, kid + '.jpg'), 'wb').write(img)
+        json.dump(meta, open(os.path.join(KITS, kid + '.json'), 'w'), ensure_ascii=False)
+        if secrets.randbelow(50) == 0: limpar_kits()
+        return self._json(200, {'id': kid})
+
+    def ver_kit(self, resto):
+        import html
+        m = re.fullmatch(r'([0-9a-f]{8})(\.jpg|\.json)?', resto)
+        if not m:
+            return self._json(404, {})
+        kid, ext = m.group(1), m.group(2) or ''
+        base = os.path.join(KITS, kid)
+        if not os.path.exists(base + '.json'):
+            return self._redir('/')
+        if ext == '.jpg':
+            return self._send(200, open(base + '.jpg', 'rb').read(), 'image/jpeg', 'public, max-age=2592000')
+        meta = json.load(open(base + '.json'))
+        if ext == '.json':
+            return self._json(200, meta)
+        host = clip(self.headers.get('X-Forwarded-Host') or self.headers.get('Host') or 'natal.ofertadorafa.com.br', 80)
+        url = f'https://{host}/api/k/{kid}'
+        dest = f'/?kit={kid}'
+        e = lambda x: html.escape(str(x), quote=True)
+        pag = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>{e(meta.get('titulo') or 'Meu kit de Natal')}</title>
+<meta property="og:type" content="website"><meta property="og:site_name" content="Natal do Rafa">
+<meta property="og:title" content="{e(meta.get('titulo') or 'Meu kit de Natal')}">
+<meta property="og:description" content="{e(meta.get('resumo') or 'Monte o seu kit de Natal no orçamento')}">
+<meta property="og:url" content="{e(url)}">
+<meta property="og:image" content="{e(url)}.jpg"><meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1080"><meta property="og:image:height" content="1350">
+<meta name="twitter:card" content="summary_large_image">
+<meta http-equiv="refresh" content="0;url={e(dest)}"></head>
+<body><script>location.replace({json.dumps(dest)})</script><a href="{e(dest)}">Ver o kit</a></body></html>'''
+        return self._send(200, pag.encode(), 'text/html; charset=utf-8', 'public, max-age=300')
+
+    def do_HEAD(self):
+        return self.do_GET()
+
+    def _redir(self, to):
+        self.send_response(302); self.send_header('Location', to); self.end_headers()
+
     def do_POST(self):
+        if self.path.startswith('/api/kit'):
+            return self.salvar_kit()
         if not self.path.startswith('/api/hit'):
             return self._json(404, {})
         try:
@@ -105,6 +211,8 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self.path.startswith('/api/k/'):
+            return self.ver_kit(self.path[7:].split('?')[0])
         if not self.path.startswith('/api/painel'):
             return self._json(404, {})
         from urllib.parse import urlparse, parse_qs
@@ -141,5 +249,6 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    threading.Thread(target=vigia_codigo, daemon=True).start()
     print(f'visitas na porta {PORT}', flush=True)
     ThreadingHTTPServer(('0.0.0.0', PORT), H).serve_forever()

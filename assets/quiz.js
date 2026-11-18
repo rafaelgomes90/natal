@@ -148,13 +148,14 @@
     var t = total(), sobra = R.orc - t;
     var temTxt = R.tem.length ? ' · já tem '+R.tem.map(function(r){ return NOME_PAPEL[r].toLowerCase(); }).join(', ') : '';
     kitEl.innerHTML =
-      '<div class="kit-topo"><p class="eyebrow">Seu Natal montado</p><h2>Kit '+ESTILO_TXT[R.est]+', árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m</h2>'+
+      '<div class="kit-topo"><p class="eyebrow">'+(KIT.compartilhado?'Kit de Natal que te mandaram':'Seu Natal montado')+'</p><h2>Kit '+ESTILO_TXT[R.est]+', árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m</h2>'+
       '<p class="kit-meta">Orçamento de R$ '+brl(R.orc)+temTxt+'</p></div>'+
       (KIT.aviso?'<p class="aviso">'+KIT.aviso+'</p>':'')+
       '<div class="soma"><div><small>Total aproximado</small><b>R$ '+brl(t)+'</b></div><div><small>'+(sobra>=0?'Sobra do orçamento':'Passou do orçamento')+'</small><b class="'+(sobra>=0?'ok':'neg')+'">R$ '+brl(Math.abs(sobra))+'</b></div><div><small>Itens</small><b>'+KIT.itens.length+'</b></div></div>'+
       '<ol class="itens">'+KIT.itens.map(itemHTML).join('')+'</ol>'+
       '<p class="como">Cada item abre no Mercado Livre: confira o preço do dia, coloque no carrinho e pague tudo junto lá. Preços mudam todo dia (às vezes caem com cupom).</p>'+
-      '<div class="kit-acoes"><button type="button" class="refaz">Refazer com outro orçamento</button><button type="button" class="compartilha">Mandar o kit no WhatsApp</button></div>';
+      '<div class="kit-acoes"><button type="button" class="refaz">Refazer com outro orçamento</button><button type="button" class="compartilha">Mandar o kit no WhatsApp</button></div>'+
+      '<p class="salva"><button type="button" class="salva-img">Salvar a imagem do kit</button></p>';
     prepararImagem();
   }
 
@@ -162,6 +163,7 @@
     var b = ev.target.closest('button'); if(!b) return;
     if(b.classList.contains('refaz')){ kitEl.hidden = true; quiz.hidden = false; passo = 0; render(); quiz.scrollIntoView({behavior:'smooth', block:'start'}); return; }
     if(b.classList.contains('compartilha')){ compartilhar(); return; }
+    if(b.classList.contains('salva-img')){ salvarImagem(); return; }
     var i = +b.getAttribute('data-i'), it = KIT.itens[i]; if(!it) return;
     if(b.classList.contains('tira')){ KIT.itens.splice(i,1); desenhar(); return; }
     if(b.classList.contains('troca')){
@@ -179,9 +181,10 @@
   // ------------------------------------------------------------ WhatsApp: imagem do kit + texto formatado
   var EMOJI = {arvore:'🌲', luzes:'✨', bolas:'🔴', ponteira:'⭐', saia:'🎁', festao:'🌿', lacos:'🎀', destaque:'💎', guirlanda:'🚪', janela:'🪟', mesa:'🍽️', almofadas:'🛋️', papai:'🎅'};
   var SITE = location.origin + '/';
-  function textoKit(comSiteNoTopo){
+  function textoKit(comSiteNoTopo, linkKit){
     var t = Math.round(total()), l = [];
-    if(comSiteNoTopo) l.push('Monte o seu: '+SITE, '');
+    if(linkKit) l.push('🎄 Olha o kit de Natal que eu montei: '+linkKit, '');
+    else if(comSiteNoTopo) l.push('Monte o seu: '+SITE, '');
     l.push('🎄 *Meu kit de Natal*', 'Árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m · estilo '+ESTILO_TXT[R.est].split(',')[0], '💰 *Total: ~R$ '+brl(t)+'*', '');
     KIT.itens.forEach(function(it){
       var p = it.p;
@@ -190,14 +193,14 @@
       l.push('👉 '+p.link, '');
     });
     l.push('_Preços aproximados do Mercado Livre; o valor do dia aparece no anúncio._');
-    if(!comSiteNoTopo) l.push('', 'Monte o seu em 30 segundos:', SITE);
+    if(!comSiteNoTopo || linkKit) l.push('', 'Monte o seu em 30 segundos:', SITE);
     return l.join('\n');
   }
-  var IMG_KIT = null, IMG_SEQ = 0;
+  var IMG_KIT = null, IMG_DATA = null, IMG_SEQ = 0, KIT_ID = null;
   function carregar(src){ return new Promise(function(ok){ var im = new Image(); im.onload = function(){ ok(im); }; im.onerror = function(){ ok(null); }; im.src = src; }); }
   function rr(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
   function prepararImagem(){
-    var seq = ++IMG_SEQ; IMG_KIT = null;
+    var seq = ++IMG_SEQ; IMG_KIT = null; IMG_DATA = null; KIT_ID = null;
     if(!window.HTMLCanvasElement || !window.Promise) return;
     var itens = KIT.itens.slice(0, 6), resto = KIT.itens.length - itens.length;
     var fontes = document.fonts ? Promise.all(['600 60px Fraunces','italic 500 60px Fraunces','700 40px Inter','600 30px Inter'].map(function(f){ return document.fonts.load(f).catch(function(){}); })) : Promise.resolve();
@@ -234,17 +237,55 @@
       c.fillStyle = '#B3261E'; c.font = '700 50px Inter, sans-serif'; c.textAlign = 'right'; c.fillText('R$ '+brl(total()), cx+cw-pad, ly+66); c.textAlign = 'left';
       c.fillStyle = '#E9B949'; rr(c, 60, 1218, W-120, 84, 24); c.fill();
       c.fillStyle = '#1B2A22'; c.font = '700 32px Inter, sans-serif'; c.textAlign = 'center'; c.fillText('Monte o seu: natal.ofertadorafa.com.br', W/2, 1271); c.textAlign = 'left';
+      try{ IMG_DATA = cv.toDataURL('image/jpeg', .82); }catch(e){ IMG_DATA = null; }
       cv.toBlob(function(bl){ if(seq === IMG_SEQ && bl) IMG_KIT = new File([bl], 'meu-kit-de-natal.jpg', {type:'image/jpeg'}); }, 'image/jpeg', .9);
     });
   }
+  function metaKit(){
+    var t = Math.round(total());
+    return {orc:R.orc, tam:R.tam, est:R.est, tem:R.tem, alt:KIT.alt, total:t,
+      itens:KIT.itens.map(function(it){ return {id:it.p.id, q:it.q}; }),
+      titulo:'Meu kit de Natal: árvore de '+KIT.alt.toFixed(2).replace('.',',')+' m por ~R$ '+brl(t),
+      resumo:KIT.itens.map(function(it){ return NOME_PAPEL[it.p.papel]; }).join(', ')+'. Monte o seu no Natal do Rafa.'};
+  }
+  function salvarKit(){
+    if(KIT_ID) return Promise.resolve(KIT_ID);
+    if(!IMG_DATA || !window.fetch) return Promise.reject();
+    return fetch('/api/kit', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({img:IMG_DATA, kit:metaKit()})})
+      .then(function(r){ if(!r.ok) throw r.status; return r.json(); }).then(function(d){ KIT_ID = d.id; return d.id; });
+  }
   function compartilhar(){
     CSA.trackC('CompartilhouKit', {total:Math.round(total())});
-    var dados = IMG_KIT ? {files:[IMG_KIT], text:textoKit(false)} : null;
-    if(dados && navigator.canShare && navigator.canShare(dados)){
-      navigator.share(dados).catch(function(e){ if(e && e.name !== 'AbortError') abrirWa(); });
-    } else abrirWa();
+    var celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    var janela = celular ? null : window.open('about:blank', '_blank');
+    var bt = kitEl.querySelector('.compartilha'); if(bt){ bt.disabled = true; bt.textContent = 'Abrindo o WhatsApp…'; }
+    function ir(texto){
+      var u = 'https://wa.me/?text='+encodeURIComponent(texto);
+      if(janela){ janela.location = u; } else { location.href = u; }
+      setTimeout(function(){ if(bt){ bt.disabled = false; bt.textContent = 'Mandar o kit no WhatsApp'; } }, 1500);
+    }
+    salvarKit().then(function(id){ ir(textoKit(false, location.origin+'/api/k/'+id)); }, function(){ ir(textoKit(true)); });
+  }
+  function salvarImagem(){
+    var dados = IMG_KIT ? {files:[IMG_KIT]} : null;
+    if(dados && navigator.canShare && navigator.canShare(dados)){ navigator.share(dados).catch(function(){}); return; }
+    if(IMG_DATA){ var a = document.createElement('a'); a.href = IMG_DATA; a.download = 'meu-kit-de-natal.jpg'; document.body.appendChild(a); a.click(); a.remove(); }
   }
   function abrirWa(){ window.open('https://wa.me/?text='+encodeURIComponent(textoKit(true)), '_blank', 'noopener'); }
+
+  // kit aberto por link compartilhado: /?kit=xxxxxxxx
+  function abrirKitCompartilhado(id){
+    fetch('/api/k/'+id+'.json').then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(m){
+      var by = {}; P.forEach(function(p){ by[p.id] = p; });
+      var itens = (m.itens||[]).filter(function(i){ return by[i.id]; }).map(function(i){ return {p:by[i.id], q:i.q}; });
+      if(!itens.length) throw 0;
+      R.orc = ORC.indexOf(m.orc) >= 0 ? m.orc : 500; R.tam = m.tam || 'M'; R.est = ESTILO_TXT[m.est] ? m.est : 'tanto'; R.tem = m.tem || [];
+      KIT = {itens:itens, alt:m.alt || 1.8, aviso:'', compartilhado:true};
+      desenhar(); quiz.hidden = true; kitEl.hidden = false;
+      CSA.trackC('AbriuKitCompartilhado', {total:m.total||0});
+      if(CSA.hit) CSA.hit('quiz', 'Kit compartilhado aberto');
+    }).catch(function(){ render(); });
+  }
 
   function concluir(){
     bar.style.width = '100%';
@@ -258,5 +299,6 @@
     if(CSA.hit) CSA.hit('quiz', 'Até R$ '+brl(R.orc)+' · '+({P:'pequena',M:'média',G:'grande'})[R.tam]+' · '+R.est);
   }
 
-  render();
+  var kitParam = null; try{ kitParam = new URLSearchParams(location.search).get('kit'); }catch(e){}
+  if(kitParam && /^[0-9a-f]{8}$/.test(kitParam)) abrirKitCompartilhado(kitParam); else render();
 })();
