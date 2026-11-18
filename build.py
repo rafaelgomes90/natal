@@ -8,7 +8,7 @@ import json, html, os
 
 BASE = "https://natal.ofertadorafa.com.br"
 PIXEL = "4651558238447028"
-V = "4"  # suba quando mudar CSS/JS (cache de 7 dias)
+V = "5"  # suba quando mudar CSS/JS (cache de 7 dias)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(ROOT, "produtos.json"), encoding="utf-8"))
 for _p in P:

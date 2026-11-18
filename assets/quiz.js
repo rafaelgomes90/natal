@@ -86,14 +86,19 @@
   function montar(){
     var orc = R.orc, alt = R.tam === 'P' ? 1.5 : R.tam === 'M' ? 1.8 : 2.1, aviso = '';
     var precisa = OBRIG.filter(function(r){ return R.tem.indexOf(r) < 0; });
-    var kit = [], gasto = 0;
+    var kit = [], gasto = 0, faltou = [];
     function minRest(papeis, a){ return papeis.reduce(function(s,r){ var c = porPapel(r).map(function(p){ return custo(p,a); }); return s + (c.length ? Math.min.apply(null,c) : 0); }, 0); }
     function semCobertos(papeis, item){ return papeis.filter(function(r){ return !(item.cobre && item.cobre.indexOf(r) >= 0); }); }
 
     if(precisa.indexOf('arvore') >= 0){
-      var tamanhos = ALT[R.tam], tentativas = [tamanhos].concat(R.tam==='G'?[ALT.M,ALT.P]:R.tam==='M'?[ALT.P]:[]), escolhida = null;
-      for(var t=0; t<tentativas.length && !escolhida; t++){
-        var cands = porPapel('arvore').filter(function(p){ return tentativas[t].indexOf(p.altura) >= 0; });
+      var tentativas = [ALT[R.tam]].concat(R.tam==='G'?[ALT.M,ALT.P]:R.tam==='M'?[ALT.P]:[]), escolhida = null;
+      // estilo nevado é a própria árvore: tenta nevada/branca em todos os tamanhos antes de cair pra verde
+      var passes = [];
+      if(R.est === 'nevado') tentativas.forEach(function(tam, i){ passes.push({tam:tam, menor:i>0, estilo:true}); });
+      tentativas.forEach(function(tam, i){ passes.push({tam:tam, menor:i>0, estilo:false}); });
+      for(var t=0; t<passes.length && !escolhida; t++){
+        var ps = passes[t];
+        var cands = porPapel('arvore').filter(function(p){ return ps.tam.indexOf(p.altura) >= 0 && (!ps.estilo || (p.estilo && p.estilo.indexOf('nevado') >= 0)); });
         var viaveis = cands.filter(function(p){ return p.precoAprox + minRest(semCobertos(precisa.slice(1), p), p.altura) <= orc; });
         if(!viaveis.length) continue;
         // a árvore pode levar até ~55% do orçamento (a já decorada, mais); acima disso, só se nada couber
@@ -101,7 +106,8 @@
         var lista = dentro.length ? dentro : viaveis;
         lista.sort(function(a,b){ return (score(b) + 15*b.precoAprox/orc + (b.cobre && orc>=500 ? -25 : 0)) - (score(a) + 15*a.precoAprox/orc + (a.cobre && orc>=500 ? -25 : 0)); });
         escolhida = lista[0];
-        if(t > 0) aviso = 'Com R$ '+brl(orc)+' não coube uma árvore do tamanho que você pediu com todo o resto, então escolhemos uma de '+escolhida.altura.toFixed(2).replace('.',',')+' m. Se preferir a maior, troque a árvore abaixo.';
+        if(ps.menor) aviso = 'Com R$ '+brl(orc)+' não coube uma árvore'+(ps.estilo?' nevada':'')+' do tamanho que você pediu com todo o resto, então escolhemos uma de '+escolhida.altura.toFixed(2).replace('.',',')+' m. Se preferir a maior, troque a árvore abaixo.';
+        else if(R.est === 'nevado' && !ps.estilo) aviso = 'Com R$ '+brl(orc)+' não coube uma árvore nevada com todo o resto, então escolhemos uma verde. As bolas prata e branco deixam o clima nevado; se preferir, troque a árvore abaixo.';
       }
       if(!escolhida){ escolhida = porPapel('arvore').sort(function(a,b){ return a.precoAprox-b.precoAprox; })[0]; aviso = 'O orçamento ficou apertado; montamos o mais barato possível.'; }
       alt = escolhida.altura;
@@ -113,11 +119,16 @@
     for(var i=0; i<precisa.length; i++){
       var r = precisa[i], resto = precisa.slice(i+1);
       var ok = porPapel(r).filter(function(p){ return gasto + custo(p,alt) + minRest(semCobertos(resto,p), alt) <= orc; });
-      var esc2 = ok[0] || porPapel(r).sort(function(a,b){ return custo(a,alt)-custo(b,alt); })[0];
-      if(!esc2) continue;
-      kit.push({p:esc2, q:qtd(esc2,alt)}); gasto += custo(esc2,alt);
+      var esc2 = ok[0], qq = esc2 ? qtd(esc2,alt) : 1;
+      if(!esc2){ // não coube na quantidade ideal: leva 1 unidade do mais barato, se couber
+        esc2 = porPapel(r).sort(function(a,b){ return a.precoAprox-b.precoAprox; })[0]; qq = 1;
+        if(!esc2 || gasto + esc2.precoAprox > orc){ faltou.push(NOME_PAPEL[r].toLowerCase()); continue; }
+        if(qtd(esc2,alt) > 1) faltou.push('mais '+NOME_PAPEL[r].toLowerCase());
+      }
+      kit.push({p:esc2, q:qq}); gasto += esc2.precoAprox*qq;
       if(esc2.cobre){ precisa = precisa.slice(0,i+1).concat(semCobertos(resto, esc2)); }
     }
+    if(faltou.length) aviso = (aviso ? aviso+' ' : '') + 'Pra caber em R$ '+brl(orc)+' ficou de fora: '+faltou.join(', ')+'. Se puder subir um pouco o orçamento, o kit fica completo.';
     // extras pela ordem de impacto, enquanto couber
     EXTRAS.forEach(function(r){
       var ok = porPapel(r).filter(function(p){ return gasto + p.precoAprox <= orc; });
@@ -168,7 +179,10 @@
     if(b.classList.contains('tira')){ KIT.itens.splice(i,1); desenhar(); return; }
     if(b.classList.contains('troca')){
       var lista = porPapel(it.p.papel);
-      if(it.p.papel === 'arvore'){ lista = lista.sort(function(a,b){ return a.altura-b.altura || a.precoAprox-b.precoAprox; }); }
+      if(it.p.papel === 'arvore'){
+        var est = function(p){ return R.est !== 'tanto' && p.estilo && p.estilo.indexOf(R.est) >= 0 ? 0 : 1; };
+        lista = lista.sort(function(a,b){ return est(a)-est(b) || a.altura-b.altura || a.precoAprox-b.precoAprox; });
+      }
       var j = (lista.indexOf(it.p) + 1) % lista.length, novo = lista[j];
       it.p = novo; it.q = qtd(novo, KIT.alt);
       if(novo.papel === 'arvore'){ KIT.alt = novo.altura; KIT.itens.forEach(function(x){ x.q = qtd(x.p, KIT.alt); }); }
