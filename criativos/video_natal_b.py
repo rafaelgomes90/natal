@@ -127,6 +127,7 @@ T2[-3:] = [T2[-4] + .55, T2[-4] + 1.1, T2[-4] + 1.5]
 T_ESTOURO, T_CAI, T_TITULO2 = 2.35, 3.05, 3.55
 T_CARIMBO = T2[-1] + .55
 T_CTA = 12.4
+SUB_CTA = "você diz quanto quer gastar, o site monta"
 
 def papel_em(linhas, tempos, t, dur_linha=.16):
     n = 0; frac = 0.
@@ -221,7 +222,7 @@ def frame(i):
             cb = tuple(int(RED[k] + (GOLD[k]-RED[k])*a3) for k in range(3))
             d.rounded_rectangle(((W-bw)/2, by, (W+bw)/2, by+bh), 62, fill=cb)
             tc(d, by + 34, "natal.ofertadorafa.com.br", F_URL, RED, a3, cb)
-            tc(d, by + 160, "você diz quanto quer gastar, o site monta", F_SM, CREAM, a3)
+            tc(d, by + 160, SUB_CTA, F_SM, CREAM, a3)
     im = Image.blend(im, GRAOS[i % 6], 0.03)
     return im
 
