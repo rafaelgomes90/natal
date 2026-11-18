@@ -260,7 +260,7 @@
     var janela = celular ? null : window.open('about:blank', '_blank');
     var bt = kitEl.querySelector('.compartilha'); if(bt){ bt.disabled = true; bt.textContent = 'Abrindo o WhatsApp…'; }
     function ir(texto){
-      var u = 'https://wa.me/?text='+encodeURIComponent(texto);
+      var u = 'https://api.whatsapp.com/send?text='+encodeURIComponent(texto);
       if(janela){ janela.location = u; } else { location.href = u; }
       setTimeout(function(){ if(bt){ bt.disabled = false; bt.textContent = 'Mandar o kit no WhatsApp'; } }, 1500);
     }
@@ -271,7 +271,7 @@
     if(dados && navigator.canShare && navigator.canShare(dados)){ navigator.share(dados).catch(function(){}); return; }
     if(IMG_DATA){ var a = document.createElement('a'); a.href = IMG_DATA; a.download = 'meu-kit-de-natal.jpg'; document.body.appendChild(a); a.click(); a.remove(); }
   }
-  function abrirWa(){ window.open('https://wa.me/?text='+encodeURIComponent(textoKit(true)), '_blank', 'noopener'); }
+  function abrirWa(){ window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(textoKit(true)), '_blank', 'noopener'); }
 
   // kit aberto por link compartilhado: /?kit=xxxxxxxx
   function abrirKitCompartilhado(id){
